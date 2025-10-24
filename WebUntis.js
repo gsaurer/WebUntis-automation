@@ -165,20 +165,27 @@ class WebUntisAPI {
     }
 
     /**
-     * Get formatted string of open homework for the next n days
+     * Get homework for the next N days
      * @param {number} days - Number of days to look ahead (default: 7)
      * @param {boolean} onlyIncomplete - Only show incomplete homework (default: true)
-     * @returns {Promise<string>} Formatted string with Subject, Due, Text
+     * @param {boolean} excludeToday - Exclude today from the results (default: false)
+     * @returns {Promise<Array|null>} Array of homework objects or null if no homework found
      */
-    async getFormattedHomework(days = 7, onlyIncomplete = true) {
+    async getHomeworkList(days = 7, onlyIncomplete = true, excludeToday = false) {
         const now = new Date();
-        const future = new Date(now.getTime() + (days * 24 * 60 * 60 * 1000));
         
-        const startDate = WebUntisAPI.formatDate(now);
-        const endDate = WebUntisAPI.formatDate(future);
+        // If excludeToday is true, start from tomorrow
+        const startDate = excludeToday 
+            ? new Date(now.getTime() + (24 * 60 * 60 * 1000))  // Tomorrow
+            : now;                                               // Today
+            
+        const future = new Date(startDate.getTime() + (days * 24 * 60 * 60 * 1000));
+        
+        const startDateStr = WebUntisAPI.formatDate(startDate);
+        const endDateStr = WebUntisAPI.formatDate(future);
         
         try {
-            const homeworkData = await this.getHomework(startDate, endDate);
+            const homeworkData = await this.getHomework(startDateStr, endDateStr);
             const homework = homeworkData.homeworks || [];
             const lessons = homeworkData.lessons || [];
             
@@ -198,32 +205,64 @@ class WebUntisAPI {
                 return dateA - dateB;
             });
             
+            // Return null if no homework found
             if (filteredHomework.length === 0) {
-                return `No ${onlyIncomplete ? 'open ' : ''}homework found for the next ${days} days.`;
+                return null;
             }
             
-            // Format the homework
-            let formattedString = `📚 HOMEWORK FOR NEXT ${days} DAYS (${filteredHomework.length} ${onlyIncomplete ? 'open ' : ''}assignments)\n`;
-            formattedString += "=".repeat(60) + "\n\n";
-            
-            filteredHomework.forEach((hw, index) => {
-                const dueDate = this.formatWebUntisDate(hw.dueDate);
-                const subject = lessonMap.get(hw.lessonId) || hw.subject || 'Unknown Subject';
-                const text = hw.text || 'No description';
-                const status = hw.completed ? '✅' : '📋';
-                
-                formattedString += `${index + 1}. ${status} ${subject}\n`;
-                formattedString += `   📅 Due: ${dueDate}\n`;
-                formattedString += `   📝 ${text}\n`;
-                formattedString += "-".repeat(40) + "\n";
-            });
-            
-            return formattedString;
+            // Add subject information to homework objects
+            return filteredHomework.map(hw => ({
+                ...hw,
+                subjectName: lessonMap.get(hw.lessonId) || hw.subject || 'Unknown Subject'
+            }));
             
         } catch (error) {
-            console.error('Failed to get formatted homework:', error);
+            console.error('Failed to get homework list:', error);
             throw error;
         }
+    }
+
+    /**
+     * Format homework list to readable string
+     * @param {Array|null} homeworkList - Array of homework objects or null
+     * @param {number} days - Number of days for display purposes
+     * @param {boolean} onlyIncomplete - Whether only incomplete homework was requested
+     * @returns {string} Formatted string with Subject, Due, Text
+     */
+    formatHomework(homeworkList, days = 7, onlyIncomplete = true) {
+        if (!homeworkList || homeworkList.length === 0) {
+            return `No ${onlyIncomplete ? 'open ' : ''}homework found for the next ${days} days.`;
+        }
+        
+        // Format the homework
+        let formattedString = `📚 HOMEWORK FOR NEXT ${days} DAYS (${homeworkList.length} ${onlyIncomplete ? 'open ' : ''}assignments)\n`;
+        formattedString += "=".repeat(60) + "\n\n";
+        
+        homeworkList.forEach((hw, index) => {
+            const dueDate = this.formatWebUntisDate(hw.dueDate);
+            const subject = hw.subjectName || 'Unknown Subject';
+            const text = hw.text || 'No description';
+            const status = hw.completed ? '✅' : '📋';
+            
+            formattedString += `${index + 1}. ${status} ${subject}\n`;
+            formattedString += `   📅 Due: ${dueDate}\n`;
+            formattedString += `   📝 ${text}\n`;
+            formattedString += "-".repeat(40) + "\n";
+        });
+        
+        return formattedString;
+    }
+
+    /**
+     * Get formatted homework for the next N days (legacy method for backward compatibility)
+     * @param {number} days - Number of days to look ahead (default: 7)
+     * @param {boolean} onlyIncomplete - Only show incomplete homework (default: true)
+     * @param {boolean} excludeToday - Exclude today from the results (default: false)
+     * @returns {Promise<string>} Formatted string with Subject, Due, Text
+     */
+    async getFormattedHomework(days = 7, onlyIncomplete = true, excludeToday = false) {
+        const homeworkList = await this.getHomeworkList(days, onlyIncomplete, excludeToday);
+        return this.formatHomework(homeworkList, days, onlyIncomplete);
     }
 
     /**

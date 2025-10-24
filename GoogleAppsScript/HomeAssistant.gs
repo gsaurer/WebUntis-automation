@@ -31,9 +31,12 @@ function sendHomeworkToHomeAssistant(config, haConfig, days = 3, options = {}) {
 
     try {
         const api = getAPIInstance(config);
-        const homework = api.getFormattedHomework(days, true); // Next n days, open only
+        const homeworkList = api.getHomeworkList(days, true, true); // Next n days, open only, exclude today
         
-        if (!homework.includes('No open homework')) {
+        // Only send notification if homework exists
+        if (homeworkList) {
+            const homework = api.formatHomework(homeworkList, days, true);
+            
             // Prepare notification data
             const opts = {
                 title: 'Upcoming Homework Reminder',
@@ -50,13 +53,14 @@ function sendHomeworkToHomeAssistant(config, haConfig, days = 3, options = {}) {
             
             if (result.success) {
                 console.log(`🏠 Homework notification sent to Home Assistant successfully!`);
+                console.log(`📚 Found ${homeworkList.length} homework assignments`);
             } else {
                 console.error(`❌ Failed to send notification to Home Assistant: ${result.error}`);
             }
             
             return result;
         } else {
-            console.log(`🎉 No homework due in the next ${days} days! (No notification sent)`);
+            console.log(`😎 No homework found for the next ${days} days - notification not sent`);
             return { success: true, message: 'No homework to notify' };
         }
         

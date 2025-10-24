@@ -46,22 +46,30 @@ function testHomeAssistantNotification() {
     console.log('🏠 Testing Home Assistant homework notification...');
     
     try {
-        // Get homework summary for next 2 days
+        // Get homework list for next 2 days
         const api = getAPIInstance(UNTIS_CONFIG);
-        const homeworkSummary = api.getFormattedHomework(2, true); // Next 2 days, open only
+        const homeworkList = api.getHomeworkList(2, true, true); // Next 2 days, open only, exclude today
         
-        // Send notification using callHomeAssistantAPI with telegram_bot.send_message
-        const result = callHomeAssistantAPI(HA_CONFIG, 'telegram_bot.send_message', {
-            config_entry_id: '<YOUR_TELEGRAM_CONFIG_ID>',
-            message: homeworkSummary,
-            target: '<YOUR_TELEGRAM_CHAT_ID>'
-        });
-        
-        if (result.success) {
-            console.log('✅ Home Assistant notification sent successfully!');
-            console.log('📱 Notification details:', result.data);
+        // Only send notification if homework exists
+        if (homeworkList) {
+            const homeworkSummary = api.formatHomework(homeworkList, 2, true);
+            
+            // Send notification using callHomeAssistantAPI with telegram_bot.send_message
+            const result = callHomeAssistantAPI(HA_CONFIG, 'telegram_bot.send_message', {
+                config_entry_id: '<YOUR_TELEGRAM_CONFIG_ID>',
+                message: homeworkSummary,
+                target: '<YOUR_TELEGRAM_CHAT_ID>'
+            });
+            
+            if (result.success) {
+                console.log('✅ Home Assistant notification sent successfully!');
+                console.log('📱 Notification details:', result.data);
+                console.log(`📚 Found ${homeworkList.length} homework assignments`);
+            } else {
+                console.error('❌ Failed to send Home Assistant notification:', result.error);
+            }
         } else {
-            console.error('❌ Failed to send Home Assistant notification:', result.error);
+            console.log('😎 No homework found for the next 2 days - notification not sent');
         }
         
         // Clean up session

@@ -26,9 +26,12 @@ function sendHomeworkEmail(config, emailAddress, days = 3, emailPrefix = null) {
 
     try {
         const api = getAPIInstance(config);
-        const homework = api.getFormattedHomework(days, true); // Next n days, open only
+        const homeworkList = api.getHomeworkList(days, true, true); // Next n days, open only, exclude today
         
-        if (!homework.includes('No open homework')) {
+        // Only send email if homework exists
+        if (homeworkList) {
+            const homework = api.formatHomework(homeworkList, days, true);
+            
             // Convert plain text to HTML for better emoji support
             const htmlContent = convertToHtmlEmail(homework);
             
@@ -49,8 +52,9 @@ function sendHomeworkEmail(config, emailAddress, days = 3, emailPrefix = null) {
                 }
             );
             console.log(`📧 Homework email sent successfully to ${emailAddress}!`);
+            console.log(`📚 Found ${homeworkList.length} homework assignments`);
         } else {
-            console.log(`🎉 No homework due in the next ${days} days!`);
+            console.log(`😎 No homework found for the next ${days} days - email not sent`);
         }
         
         // Note: We don't logout here as we're reusing the session

@@ -225,14 +225,15 @@ function smartHomeworkReminder() {
 function conditionalHomeworkReminder() {
     const config = { /* your config */ };
     
-    // Get homework data
+    // Get homework data using new method
     const api = getAPIInstance(config);
-    const homework = api.getFormattedHomework(2, true);
+    const homeworkList = api.getHomeworkList(2, true, true); // Next 2 days, exclude today
     
-    // Only send if there's homework
-    if (!homework.includes('No open homework')) {
+    // Only send notification if homework exists
+    if (homeworkList) {
+        const formattedHomework = api.formatHomework(homeworkList, 2, true);
         sendHomeworkEmail(config, '<YOUR_EMAIL@gmail.com>', 2);
-        console.log('📧 Homework reminder sent');
+        console.log(`📧 Homework reminder sent for ${homeworkList.length} assignments`);
     } else {
         console.log('😎 No homework - notification skipped');
     }
@@ -293,10 +294,37 @@ const api = new WebUntisAPI(config);
 const success = api.authenticate();
 ```
 
-#### `getFormattedHomework(days, onlyIncomplete)`
+#### `getHomeworkList(days, onlyIncomplete, excludeToday)`
+Get raw homework data as an array or null if no homework found:
 ```javascript
-const homework = api.getFormattedHomework(7, true);
-console.log(homework);
+// Get homework list for next 7 days (excluding today)
+const homeworkList = api.getHomeworkList(7, true, true);
+
+if (homeworkList) {
+    console.log(`Found ${homeworkList.length} homework assignments`);
+    // Process homework list...
+} else {
+    console.log('No homework found');
+}
+```
+
+#### `formatHomework(homeworkList, days, onlyIncomplete)`
+Format homework list to readable string:
+```javascript
+const homeworkList = api.getHomeworkList(7, true, true);
+const formattedText = api.formatHomework(homeworkList, 7, true);
+console.log(formattedText);
+```
+
+#### `getFormattedHomework(days, onlyIncomplete, excludeToday)`
+Legacy method that combines the above two methods:
+```javascript
+// Include today's homework
+const homework = api.getFormattedHomework(7, true, false);
+
+// Exclude today's homework (only future days)
+const futureHomework = api.getFormattedHomework(7, true, true);
+console.log(futureHomework);
 ```
 
 #### `getHomework(startDate, endDate)`
