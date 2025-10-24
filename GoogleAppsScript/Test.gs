@@ -12,7 +12,8 @@ const UNTIS_CONFIG = {
     school: '<YOUR_SCHOOL_NAME>',        // Your school identifier
     username: '<YOUR_USERNAME>',         // Your WebUntis username  
     password: '<YOUR_PASSWORD>',         // Your WebUntis password
-    server: '<YOUR_WEBUNTIS_SERVER>'       // Your server (change if different)
+    server: '<YOUR_WEBUNTIS_SERVER>',    // Your server (change if different)
+    resourceId: '<YOUR_STUDENT_RESOURCE_ID>' // Your student resource ID (found in timetable URL)
 };
 
 const HA_CONFIG = {
@@ -121,5 +122,137 @@ function syncToSpecificCalendar() {
     } catch (error) {
         console.log('⚠️ Specific calendar not found, trying default calendar...');
         addHomeworkToCalendar(UNTIS_CONFIG, null, 14); // Fall back to default
+    }
+}
+
+/**
+ * Test: Sync timetable to calendar using new architecture
+ */
+function testTimetableSync() {
+    console.log('📅 Testing timetable sync to calendar...');
+    
+    try {
+        // Use cached API instance instead of creating new one
+        const api = getAPIInstance(UNTIS_CONFIG);
+        
+        // Get today and next 7 days
+        const today = new Date();
+        const endDate = new Date();
+        endDate.setDate(today.getDate() + 7);
+        
+        const startDateStr = WebUntisAPI.formatDateForAPI(today);
+        const endDateStr = WebUntisAPI.formatDateForAPI(endDate);
+        
+        console.log(`📅 Getting timetable from ${startDateStr} to ${endDateStr}`);
+        
+        // Get timetable data
+        const timetableData = api.getTimetableData(startDateStr, endDateStr);
+        
+        if (!timetableData) {
+            console.log('📅 No timetable data found for the specified period.');
+            return;
+        }
+        
+        // Process the data
+        const lessons = api.processTimetableData(timetableData, {
+            skipCancelled: false,
+            includeNotes: true
+        });
+        
+        if (!lessons) {
+            console.log('📅 No lessons found after processing.');
+            return;
+        }
+        
+        console.log(`📚 Found ${lessons.length} lessons to sync`);
+        
+        // Sync to calendar (you can specify a calendar ID if needed)
+        // const calendarId = 'your-calendar-id@gmail.com'; // Optional
+        const result = syncTimetableToCalendar(lessons /* , calendarId */);
+        
+        if (result.success) {
+            console.log('✅ Timetable sync successful!');
+            console.log(`📊 Results: ${result.added} added, ${result.updated} updated, ${result.deleted} deleted, ${result.skipped} skipped`);
+        } else {
+            console.error('❌ Timetable sync failed:', result.error);
+        }
+        
+        // Keep session alive - don't logout (reuse cache)
+        console.log('♻️ Keeping session alive for future use');
+        
+    } catch (error) {
+        console.error('❌ Timetable sync test failed:', error.toString());
+        // Clear cache on error
+        clearAPIInstance();
+    }
+}
+
+/**
+ * Test: Get raw timetable data using new architecture
+ */
+function testGetTimetable() {
+    console.log('📅 Testing timetable data retrieval...');
+    
+    try {
+        // Use cached API instance instead of creating new one
+        const api = getAPIInstance(UNTIS_CONFIG);
+        
+        // Get timetable for next 3 days
+        const today = new Date();
+        const threeDaysLater = new Date();
+        threeDaysLater.setDate(today.getDate() + 3);
+        
+        const startDateStr = WebUntisAPI.formatDateForAPI(today);
+        const endDateStr = WebUntisAPI.formatDateForAPI(threeDaysLater);
+        
+        console.log(`📅 Getting timetable from ${startDateStr} to ${endDateStr}`);
+        
+        // Get raw timetable data
+        const timetableData = api.getTimetableData(startDateStr, endDateStr);
+        
+        if (!timetableData) {
+            console.log('📅 No timetable data found for the specified period.');
+            return;
+        }
+        
+        console.log('📊 Raw Timetable Data Summary:');
+        console.log(`   📅 Days: ${timetableData.days?.length || 0}`);
+        
+        // Process the data
+        const lessons = api.processTimetableData(timetableData);
+        
+        if (lessons) {
+            console.log(`📚 Processed ${lessons.length} lessons:`);
+            
+            // Group lessons by date
+            const lessonsByDate = {};
+            lessons.forEach(lesson => {
+                if (!lessonsByDate[lesson.date]) {
+                    lessonsByDate[lesson.date] = [];
+                }
+                lessonsByDate[lesson.date].push(lesson);
+            });
+            
+            // Log summary for each date
+            Object.keys(lessonsByDate).forEach(date => {
+                console.log(`   📅 ${date}: ${lessonsByDate[date].length} lessons`);
+                
+                // Log first few lessons for this day
+                lessonsByDate[date].slice(0, 3).forEach(lesson => {
+                    const timeStart = lesson.startTime.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+                    const timeEnd = lesson.endTime.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+                    const status = lesson.isCancelled ? ' (CANCELLED)' : lesson.isAdditional ? ' (ADDITIONAL)' : '';
+                    console.log(`     ${timeStart}-${timeEnd}: ${lesson.subject} - ${lesson.teacher} (${lesson.room})${status}`);
+                });
+            });
+        }
+        
+        // Keep session alive - don't logout (reuse cache)
+        console.log('♻️ Keeping session alive for future use');
+        
+    } catch (error) {
+        console.error('❌ Timetable test failed:', error.toString());
+        // Clear cache on error
+        clearAPIInstance();
     }
 }

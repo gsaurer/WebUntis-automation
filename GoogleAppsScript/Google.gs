@@ -485,3 +485,253 @@ function addHomeworkToCalendar(config, calendarId = null, days = 7, options = {}
         };
     }
 }
+
+// ==========================================
+// GOOGLE APPS SCRIPT TIMETABLE FUNCTIONS
+// ==========================================
+
+/**
+ * Sync processed timetable lessons to Google Calendar
+ * @param {Object} config - WebUntis configuration object
+ * @param {string} startDate - Start date in YYYY-MM-DD format  
+ * @param {string} endDate - End date in YYYY-MM-DD format
+ * @param {string|null} calendarId - Calendar ID, calendar name, or null for default
+ * @param {Object} options - Additional options for calendar integration
+ * @param {boolean} options.createCalendarIfNotExists - Create calendar if it doesn't exist (default: true)
+ * @param {string} options.calendarName - Name for new calendar if creating (default: 'WebUntis Timetable')
+ * @param {boolean} options.updateExisting - Update existing events if found (default: true)
+ * @param {boolean} options.skipCancelled - Skip cancelled lessons instead of deleting (default: true) - Note: Cancelled lessons are automatically deleted from calendar
+ * @param {boolean} options.includeNotes - Include lesson notes in event description (default: true)
+ * @param {number} resourceId - Student/teacher resource ID (optional)
+ */
+function syncTimetableToCalendar(lessons, calendarId = null, options = {}) {
+    // Set default options
+    const opts = {
+        createCalendarIfNotExists: true,
+        calendarName: 'WebUntis Timetable',
+        updateExisting: true,
+        includeNotes: true,
+        ...options
+    };
+
+    try {
+        // Handle null/empty lessons
+        if (!lessons || !Array.isArray(lessons) || lessons.length === 0) {
+            console.log('📅 No lessons to sync');
+            return { 
+                success: true, 
+                message: 'No lessons found',
+                added: 0,
+                updated: 0,
+                deleted: 0,
+                skipped: 0
+            };
+        }
+
+        console.log(`📅 Syncing ${lessons.length} lessons to calendar...`);
+
+        // Get or create calendar
+        let calendar = null;
+        
+        if (!calendarId) {
+            // Use default calendar
+            calendar = CalendarApp.getDefaultCalendar();
+            console.log('📅 Using default calendar');
+        } else if (calendarId.includes('@')) {
+            // Calendar ID provided (email format)
+            try {
+                calendar = CalendarApp.getCalendarById(calendarId);
+                if (calendar) {
+                    console.log(`📅 Using calendar by ID: ${calendarId}`);
+                }
+            } catch (error) {
+                console.warn(`⚠️ Calendar ID ${calendarId} not found or no access`);
+            }
+        } else {
+            // Calendar name provided - search for it
+            const calendars = CalendarApp.getAllCalendars();
+            calendar = calendars.find(cal => cal.getName() === calendarId);
+            if (calendar) {
+                console.log(`📅 Found calendar by name: ${calendarId}`);
+            }
+        }
+        
+        // If calendar still not found, try to create it or fall back
+        if (!calendar) {
+            if (opts.createCalendarIfNotExists) {
+                try {
+                    const calendarName = typeof calendarId === 'string' && !calendarId.includes('@') 
+                        ? calendarId 
+                        : opts.calendarName;
+                    calendar = CalendarApp.createCalendar(calendarName);
+                    console.log(`✅ Created new calendar: ${calendarName}`);
+                } catch (error) {
+                    console.warn('⚠️ Could not create calendar, using default');
+                    calendar = CalendarApp.getDefaultCalendar();
+                }
+            } else {
+                console.warn('⚠️ Specified calendar not found, using default');
+                calendar = CalendarApp.getDefaultCalendar();
+            }
+        }
+        
+        if (!calendar) {
+            throw new Error('No calendar available');
+        }
+
+        let addedCount = 0;
+        let updatedCount = 0;
+        let skippedCount = 0;
+        let deletedCount = 0;
+
+        // Process each lesson
+        lessons.forEach((lesson, index) => {
+            try {
+                console.log(`� Processing lesson ${index + 1}/${lessons.length}: ${lesson.subject}`);
+
+                // Check if event already exists
+                const existingEvents = calendar.getEventsForDay(lesson.startTime);
+                const existingEvent = existingEvents.find(event => {
+                    const eventStart = event.getStartTime();
+                    const eventEnd = event.getEndTime();
+                    return Math.abs(eventStart.getTime() - lesson.startTime.getTime()) < 60000 && // Within 1 minute
+                           Math.abs(eventEnd.getTime() - lesson.endTime.getTime()) < 60000 &&
+                           event.getTitle().includes(lesson.subject);
+                });
+
+                // Handle cancelled lessons - delete from calendar
+                if (lesson.isCancelled) {
+                    if (existingEvent) {
+                        existingEvent.deleteEvent();
+                        console.log(`🗑️ Deleted cancelled lesson: ${lesson.subject} at ${lesson.startTime.toLocaleTimeString()}`);
+                        deletedCount++;
+                    } else {
+                        // No existing event to delete
+                        console.log(`⏭️ Skipped cancelled lesson (no existing event): ${lesson.subject}`);
+                        skippedCount++;
+                    }
+                    return; // Don't process further for cancelled lessons
+                }
+
+                // Create event title
+                let eventTitle = `${lesson.subject}`;
+                if (lesson.isExam) {
+                    eventTitle = `📝 ${eventTitle} (EXAM)`;
+                } else if (lesson.isAdditional) {
+                    eventTitle = `➕ ${eventTitle} (ADDITIONAL)`;
+                }
+
+                // Add homework indicator if present
+                if (lesson.hasHomework) {
+                    eventTitle += ' 📚';
+                }
+
+                // Create event description
+                let description = `Subject: ${lesson.subjectLong || lesson.subject}\nTeacher: ${lesson.teacher}`;
+                if (lesson.teacherLong && lesson.teacherLong !== lesson.teacher) {
+                    description += ` (${lesson.teacherLong})`;
+                }
+                description += `\nRoom: ${lesson.room}`;
+                if (lesson.roomLong && lesson.roomLong !== lesson.room) {
+                    description += ` (${lesson.roomLong})`;
+                }
+                description += `\nType: ${lesson.type}\nStatus: ${lesson.status}`;
+
+                // Add lesson info if available
+                if (lesson.lessonInfo && opts.includeNotes) {
+                    description += `\n\nLesson Info: ${lesson.lessonInfo}`;
+                }
+
+                // Add notes if available
+                if (lesson.notes && opts.includeNotes) {
+                    description += `\n\nNotes: ${lesson.notes}`;
+                }
+
+                // Add additional texts if available
+                if (lesson.texts && lesson.texts.length > 0 && opts.includeNotes) {
+                    lesson.texts.forEach(text => {
+                        if (typeof text === 'string') {
+                            description += `\n\nAdditional Info: ${text}`;
+                        } else if (text.type && text.text) {
+                            description += `\n\n${text.type}: ${text.text}`;
+                        }
+                    });
+                }
+
+                // Add icons information
+                if (lesson.icons && lesson.icons.length > 0) {
+                    description += `\n\nIcons: ${lesson.icons.join(', ')}`;
+                }
+
+                description += `\n\nCreated by WebUntis API`;
+
+                if (existingEvent && opts.updateExisting) {
+                    // Update existing event
+                    existingEvent.setTitle(eventTitle);
+                    existingEvent.setDescription(description);
+                    existingEvent.setTime(lesson.startTime, lesson.endTime);
+                    console.log(`🔄 Updated: ${eventTitle} at ${lesson.startTime.toLocaleTimeString()}`);
+                    updatedCount++;
+                } else if (!existingEvent) {
+                    // Create new event
+                    const eventOptions = {
+                        description: description
+                    };
+
+                    // Set color based on status/type
+                    if (lesson.isExam) {
+                        eventOptions.color = CalendarApp.EventColor.RED;
+                    } else if (lesson.isAdditional) {
+                        eventOptions.color = CalendarApp.EventColor.GREEN;
+                    } else if (lesson.hasHomework) {
+                        eventOptions.color = CalendarApp.EventColor.ORANGE;
+                    }
+
+                    const newEvent = calendar.createEvent(eventTitle, lesson.startTime, lesson.endTime, eventOptions);
+                    console.log(`✅ Added: ${eventTitle} at ${lesson.startTime.toLocaleTimeString()}`);
+                    addedCount++;
+                } else {
+                    // Event exists and update is disabled
+                    console.log(`⏭️ Skipped (exists): ${eventTitle}`);
+                    skippedCount++;
+                }
+
+            } catch (error) {
+                console.error(`❌ Error processing lesson: ${error.toString()}`);
+                console.error(`   Lesson details: ${lesson.subject} at ${lesson.startTime}`);
+                skippedCount++;
+            }
+        });
+
+        const result = {
+            success: true,
+            calendar: calendar.getName(),
+            calendarId: calendar.getId(),
+            added: addedCount,
+            updated: updatedCount,
+            deleted: deletedCount,
+            skipped: skippedCount,
+            totalProcessed: addedCount + updatedCount + deletedCount + skippedCount
+        };
+
+        console.log(`✅ Timetable sync complete:`);
+        console.log(`   📅 Calendar: ${result.calendar}`);
+        console.log(`   ➕ Added: ${result.added}`);
+        console.log(`   🔄 Updated: ${result.updated}`);
+        console.log(`   🗑️ Deleted: ${result.deleted}`);
+        console.log(`   ⏭️ Skipped: ${result.skipped}`);
+
+        return result;
+
+    } catch (error) {
+        console.error('❌ Error syncing timetable to calendar:', error.toString());
+        return {
+            success: false,
+            error: error.toString(),
+            added: 0,
+            updated: 0,
+            deleted: 0,
+            skipped: 0
+        };
+    }
+}

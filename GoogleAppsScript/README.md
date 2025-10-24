@@ -286,6 +286,29 @@ function addHomeworkToCalendar() {
 }
 ```
 
+#### `getTimetable(config, startDate, endDate, resourceId)`
+Get timetable data from WebUntis REST API:
+```javascript
+const timetableData = getTimetable(config, '2025-10-20', '2025-10-24');
+console.log(timetableData.days); // Array of days with lessons
+```
+
+#### `syncTimetableToCalendar(config, startDate, endDate, calendarId, options, resourceId)`
+Sync timetable to Google Calendar:
+```javascript
+const result = syncTimetableToCalendar(
+    config,
+    '2025-10-20', 
+    '2025-10-24',
+    'WebUntis Timetable', // Calendar name (will be created)
+    {
+        skipCancelled: false,
+        includeNotes: true,
+        updateExisting: true
+    }
+);
+```
+
 ### WebUntis API Methods
 
 #### `authenticate()`
@@ -418,6 +441,41 @@ function sendSlackHomeworkReminder() {
         
         api.logout();
     }
+}
+```
+
+### 4. Timetable Sync to Calendar
+```javascript
+function syncWeeklyTimetable() {
+    const config = { /* your config */ };
+    
+    // Get current week dates
+    const today = new Date();
+    const startOfWeek = new Date(today.setDate(today.getDate() - today.getDay() + 1)); // Monday
+    const endOfWeek = new Date(today.setDate(today.getDate() - today.getDay() + 5));   // Friday
+    
+    // Format dates for API
+    const startDate = formatDateForAPI(startOfWeek);
+    const endDate = formatDateForAPI(endOfWeek);
+    
+    // Sync to dedicated calendar
+    const result = syncTimetableToCalendar(
+        config,
+        startDate,
+        endDate,
+        'School Timetable', // Calendar name
+        {
+            skipCancelled: false,     // Show cancelled lessons
+            includeNotes: true,       // Include lesson notes
+            updateExisting: true      // Update existing events
+        }
+    );
+    
+    console.log(`📅 Synced ${result.added} new lessons, updated ${result.updated}`);
+}
+
+function formatDateForAPI(date) {
+    return date.toISOString().split('T')[0]; // YYYY-MM-DD
 }
 ```
 

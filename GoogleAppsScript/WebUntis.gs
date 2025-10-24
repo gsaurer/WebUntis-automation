@@ -21,6 +21,21 @@ class WebUntisAPI {
         this.personId = null;
         this.personType = null;
         this.bearerToken = null;
+        
+        // Store the full config for later use (like resourceId)
+        this.config = config;
+    }
+
+    /**
+     * Format a date for API use (YYYY-MM-DD format)
+     * @param {Date} date - Date to format
+     * @returns {string} Formatted date string
+     */
+    static formatDateForAPI(date) {
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
     }
 
     /**
@@ -40,10 +55,15 @@ class WebUntisAPI {
                 this.personId = response.result.personId;
                 this.personType = response.result.personType;
                 
-                // Get bearer token for REST API
-                this.getBearerToken();
-                
                 console.log('Authentication successful');
+                console.log(`Session ID: ${this.sessionId ? 'obtained' : 'missing'}`);
+                console.log(`Person ID: ${this.personId || 'unknown'}`);
+                console.log(`Person Type: ${this.personType || 'unknown'}`);
+                
+                // Try to get bearer token, but don't fail if it doesn't work
+                const bearerResult = this.getBearerToken();
+                console.log(`Bearer token: ${bearerResult ? 'obtained' : 'using session-based auth'}`);
+                
                 return true;
             }
             return false;
@@ -59,30 +79,40 @@ class WebUntisAPI {
      */
     getBearerToken() {
         try {
-            const tokenUrl = `${this.apiBaseUrl}/token`;
+            const tokenUrl = `${this.apiBaseUrl}/token/new?school=${this.school}`;
             
             const options = {
-                method: 'POST',
+                method: 'GET',
                 headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded',
                     'Cookie': `JSESSIONID=${this.sessionId}`
                 },
-                payload: `school=${this.school}`
+                muteHttpExceptions: true  // Get full error response
             };
 
             const response = UrlFetchApp.fetch(tokenUrl, options);
+            const responseCode = response.getResponseCode();
             
-            if (response.getResponseCode() === 200) {
-                const data = JSON.parse(response.getContentText());
-                this.bearerToken = data.access_token;
-                console.log('Bearer token obtained successfully');
-                return true;
+            if (responseCode === 200) {
+                const tokenValue = response.getContentText().trim();
+                if (tokenValue && tokenValue.length > 0) {
+                    this.bearerToken = tokenValue;
+                    console.log('Bearer token obtained successfully');
+                    console.log(`Token length: ${tokenValue.length} characters`);
+                    return true;
+                } else {
+                    console.log('Empty token response, will use session-based auth');
+                    return false;
+                }
+            } else if (responseCode === 403) {
+                console.log('Bearer token access denied (403) - this is normal for some WebUntis configurations. Using session-based auth instead.');
+                return false;
             } else {
-                console.log('Could not get bearer token, will use session-based auth');
+                console.log(`Bearer token request failed with status ${responseCode}, will use session-based auth`);
                 return false;
             }
         } catch (error) {
             console.log('Bearer token request failed:', error.toString());
+            console.log('This is often normal - will use session-based authentication instead.');
             return false;
         }
     }
@@ -277,6 +307,205 @@ class WebUntisAPI {
     getFormattedHomework(days = 7, onlyIncomplete = true, excludeToday = false) {
         const homeworkList = this.getHomeworkList(days, onlyIncomplete, excludeToday);
         return this.formatHomework(homeworkList, days, onlyIncomplete);
+    }
+
+    /**
+     * Get timetable data from WebUntis REST API
+     * @param {string} startDate - Start date in YYYY-MM-DD format
+     * @param {string} endDate - End date in YYYY-MM-DD format
+     * @param {number} resourceId - Student/teacher resource ID (optional, uses config.resourceId if not provided)
+     * @returns {Object|null} Timetable data with days and entries, or null if no data found
+     */
+    getTimetableData(startDate, endDate, resourceId = null) {
+        if (!this.sessionId) {
+            throw new Error('Not authenticated. Call authenticate() first.');
+        }
+
+        try {
+            // Use provided resourceId or get from config
+            const studentId = resourceId || this.config?.resourceId;
+            
+            if (!studentId || studentId === '<YOUR_STUDENT_RESOURCE_ID>') {
+                throw new Error(`Student Resource ID is required for timetable access!`);
+            }
+            
+            console.log(`📅 Getting timetable data from ${startDate} to ${endDate}`);
+            
+            // Get timetable data for the specified period
+            const timetableData = this.getTimetableDataForPeriod(startDate, endDate, studentId);
+            
+            if (!timetableData || !timetableData.days || timetableData.days.length === 0) {
+                console.log('📅 No timetable data found for the specified period');
+                return null;
+            }
+            
+            console.log(`📅 Found ${timetableData.days.length} days with data`);
+            return timetableData;
+            
+        } catch (error) {
+            console.error('Failed to get timetable data:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Get timetable data for a single period (internal method)
+     * @param {string} startDate - Start date in YYYY-MM-DD format
+     * @param {string} endDate - End date in YYYY-MM-DD format
+     * @param {number} studentId - Student resource ID
+     * @returns {Object|null} Timetable data for the period
+     */
+    getTimetableDataForPeriod(startDate, endDate, studentId) {
+        const headers = {
+            'Cookie': `JSESSIONID=${this.sessionId}`,
+            'User-Agent': 'WebUntisAPI/1.0'
+        };
+
+        // Add bearer token if available
+        if (this.bearerToken) {
+            headers['Authorization'] = `Bearer ${this.bearerToken}`;
+        }
+
+        // Direct call to timetable entries endpoint
+        const entriesUrl = `https://${this.server}/WebUntis/api/rest/view/v1/timetable/entries?start=${startDate}&end=${endDate}&format=2&resourceType=STUDENT&resources=${studentId}&periodTypes=&timetableType=MY_TIMETABLE`;
+        
+        console.log(`📡 Fetching timetable entries from: ${entriesUrl}`);
+
+        const entriesOptions = {
+            method: 'GET',
+            headers: headers
+        };
+
+        const entriesResponse = UrlFetchApp.fetch(entriesUrl, entriesOptions);
+
+        if (entriesResponse.getResponseCode() !== 200) {
+            console.error(`❌ Timetable HTTP error! status: ${entriesResponse.getResponseCode()}`);
+            console.error(`Timetable Response: ${entriesResponse.getContentText()}`);
+            throw new Error(`Timetable HTTP error! status: ${entriesResponse.getResponseCode()}`);
+        }
+
+        const data = JSON.parse(entriesResponse.getContentText());
+        console.log(`📊 Timetable data: ${data.days?.length || 0} days found`);
+        
+        return data;
+    }
+
+    /**
+     * Process timetable data and extract lessons
+     * @param {Object|null} timetableData - Raw timetable data from getTimetableData
+     * @param {Object} options - Processing options
+     * @param {boolean} options.skipCancelled - Skip cancelled lessons (default: false)
+     * @param {boolean} options.includeNotes - Include lesson notes (default: true)
+     * @returns {Array|null} Array of processed lesson objects or null if no lessons
+     */
+    processTimetableData(timetableData, options = {}) {
+        console.log('🔍 Processing timetable data...');
+        
+        if (!timetableData || !timetableData.days) {
+            console.log('❌ No timetable data or days found');
+            return null;
+        }
+
+        console.log(`📅 Processing ${timetableData.days.length} days`);
+
+        const opts = {
+            skipCancelled: false,
+            includeNotes: true,
+            ...options
+        };
+
+        console.log('⚙️ Processing options:', JSON.stringify(opts, null, 2));
+
+        const lessons = [];
+        let totalEntries = 0;
+        let skippedCancelled = 0;
+        let processedSuccessfully = 0;
+        let processingErrors = 0;
+
+        timetableData.days.forEach((day, dayIndex) => {
+            console.log(`📅 Processing day ${dayIndex + 1}/${timetableData.days.length}: ${day.date}`);
+            
+            if (!day.gridEntries || !Array.isArray(day.gridEntries)) {
+                console.log(`⚠️ No gridEntries found for day ${day.date}`);
+                return;
+            }
+            
+            console.log(`📊 Found ${day.gridEntries.length} grid entries for ${day.date}`);
+            totalEntries += day.gridEntries.length;
+
+            day.gridEntries.forEach((entry, entryIndex) => {
+                console.log(`📚 Processing entry ${entryIndex + 1}/${day.gridEntries.length} for ${day.date}`);
+                console.log(`   Entry details:`, JSON.stringify({
+                    id: entry.ids?.[0],
+                    status: entry.status,
+                    type: entry.type,
+                    subject: entry.position2?.[0]?.current?.displayName,
+                    teacher: entry.position1?.[0]?.current?.displayName,
+                    room: entry.position3?.[0]?.current?.displayName,
+                    duration: entry.duration
+                }, null, 2));
+
+                // Skip cancelled lessons if option is set
+                if (opts.skipCancelled && entry.status === 'CANCELLED') {
+                    console.log(`⏭️ Skipping cancelled lesson: ${entry.position2?.[0]?.current?.displayName || 'Unknown Subject'}`);
+                    skippedCancelled++;
+                    return;
+                }
+
+                try {
+                    // Parse lesson information
+                    const lesson = {
+                        id: entry.ids?.[0] || null,
+                        date: day.date,
+                        startTime: new Date(entry.duration.start),
+                        endTime: new Date(entry.duration.end),
+                        type: entry.type,
+                        status: entry.status,
+                        teacher: entry.position1?.[0]?.current?.displayName || 'Unknown Teacher',
+                        teacherLong: entry.position1?.[0]?.current?.longName || '',
+                        subject: entry.position2?.[0]?.current?.displayName || 'Unknown Subject',
+                        subjectLong: entry.position2?.[0]?.current?.longName || '',
+                        room: entry.position3?.[0]?.current?.displayName || 'Unknown Room',
+                        roomLong: entry.position3?.[0]?.current?.longName || '',
+                        icons: entry.icons || [],
+                        hasHomework: (entry.icons || []).includes('HOMEWORK'),
+                        isExam: entry.type === 'EXAM',
+                        isCancelled: entry.status === 'CANCELLED',
+                        isAdditional: entry.status === 'ADDITIONAL',
+                        notes: opts.includeNotes ? entry.notesAll || '' : '',
+                        lessonInfo: opts.includeNotes ? entry.lessonInfo || '' : '',
+                        texts: opts.includeNotes ? entry.texts || [] : [],
+                        rawEntry: entry // Keep reference to original data
+                    };
+
+                    lessons.push(lesson);
+                    processedSuccessfully++;
+                    
+                    console.log(`✅ Successfully processed lesson: ${lesson.subject} (${lesson.teacher}) at ${lesson.startTime.toLocaleTimeString()}`);
+
+                } catch (error) {
+                    console.error(`❌ Error processing lesson entry: ${error.toString()}`);
+                    console.error(`   Entry that failed:`, JSON.stringify(entry, null, 2));
+                    processingErrors++;
+                }
+            });
+        });
+
+        console.log('📊 Processing Summary:');
+        console.log(`   📅 Days processed: ${timetableData.days.length}`);
+        console.log(`   📋 Total entries found: ${totalEntries}`);
+        console.log(`   ✅ Successfully processed: ${processedSuccessfully}`);
+        console.log(`   ⏭️ Skipped cancelled: ${skippedCancelled}`);
+        console.log(`   ❌ Processing errors: ${processingErrors}`);
+        console.log(`   📚 Final lessons array length: ${lessons.length}`);
+
+        if (lessons.length === 0) {
+            console.log('⚠️ No lessons found after processing - returning null');
+            return null;
+        }
+
+        console.log(`✅ Returning ${lessons.length} processed lessons`);
+        return lessons;
     }
 
     /**
