@@ -3,8 +3,9 @@
  * 
  * Instructions:
  * 1. Copy WebUntis.gs content to a new Google Apps Script project
- * 2. Update the config object below with your credentials
- * 3. Run this test function to verify everything works
+ * 2. Update the config objects below with your credentials
+ * 3. Run StartAppScript() for complete automation setup
+ *    OR run individual test functions like quickTest()
  */
 
 // Test configurations
@@ -20,6 +21,17 @@ const HA_CONFIG = {
     url: '<YOUR_HOME_ASSISTANT_URL>',              // Replace with your Home Assistant URL
     token: '<YOUR_HA_ACCESS_TOKEN>',              // Replace with your long-lived access token
     service: 'notify.signal_me'                         // Replace with your notification service
+};
+
+const MAIL_NOTIFICATION_CONFIG = {
+    enabled: true,                                 // Set to false to disable email notifications
+    email: '<YOUR_EMAIL@gmail.com>',               // Your email address for notifications
+    homeworkDaysAhead: 3,                          // How many days ahead to check for homework in email notifications
+    emailConfig: null                              // Not needed for Google Apps Script (uses built-in Gmail)
+};
+
+const CALENDAR_CONFIG = {
+    calendarId: null,                              // null for default calendar, or specify calendar ID
 };
 
 function quickTest() {
@@ -48,7 +60,7 @@ function testHomeAssistantNotification() {
     
     try {
         // Get homework list for next 2 days
-        const api = getAPIInstance(UNTIS_CONFIG);
+        const api = getWebUntisApiInstance(UNTIS_CONFIG);
         const homeworkList = api.getHomeworkList(2, true, true); // Next 2 days, open only, exclude today
         
         // Only send notification if homework exists
@@ -74,11 +86,11 @@ function testHomeAssistantNotification() {
         }
         
         // Clean up session
-        clearAPIInstance();
+        clearWebUntisApiInstance();
         
     } catch (error) {
         console.error('❌ Test failed:', error.toString());
-        clearAPIInstance();
+        clearWebUntisApiInstance();
     }
 }
 
@@ -90,7 +102,7 @@ function syncHomeworkToCalendar() {
     const daysAhead = 7; // Look 7 days ahead
     
     // Use the new parameterized function
-    addHomeworkToCalendar(UNTIS_CONFIG, calendarId, daysAhead);
+    syncHomeworkToCalendar(UNTIS_CONFIG, calendarId, daysAhead);
 }
 
 /**
@@ -117,11 +129,11 @@ function syncToSpecificCalendar() {
     const homeworkCalendarId = '<YOUR_HOMEWORK_CALENDAR_ID@group.calendar.google.com>';
     
     try {
-        addHomeworkToCalendar(UNTIS_CONFIG, homeworkCalendarId, 14); // 14 days ahead
+        syncHomeworkToCalendar(UNTIS_CONFIG, homeworkCalendarId, 14); // 14 days ahead
         console.log('✅ Homework synced to specific calendar!');
     } catch (error) {
         console.log('⚠️ Specific calendar not found, trying default calendar...');
-        addHomeworkToCalendar(UNTIS_CONFIG, null, 14); // Fall back to default
+        syncHomeworkToCalendar(UNTIS_CONFIG, null, 14); // Fall back to default
     }
 }
 
@@ -133,7 +145,7 @@ function testTimetableSync() {
     
     try {
         // Use cached API instance instead of creating new one
-        const api = getAPIInstance(UNTIS_CONFIG);
+        const api = getWebUntisApiInstance(UNTIS_CONFIG);
         
         // Get today and next 7 days
         const today = new Date();
@@ -183,7 +195,7 @@ function testTimetableSync() {
     } catch (error) {
         console.error('❌ Timetable sync test failed:', error.toString());
         // Clear cache on error
-        clearAPIInstance();
+        clearWebUntisApiInstance();
     }
 }
 
@@ -195,7 +207,7 @@ function testGetTimetable() {
     
     try {
         // Use cached API instance instead of creating new one
-        const api = getAPIInstance(UNTIS_CONFIG);
+        const api = getWebUntisApiInstance(UNTIS_CONFIG);
         
         // Get timetable for next 3 days
         const today = new Date();
@@ -253,6 +265,105 @@ function testGetTimetable() {
     } catch (error) {
         console.error('❌ Timetable test failed:', error.toString());
         // Clear cache on error
-        clearAPIInstance();
+        clearWebUntisApiInstance();
+    }
+}
+
+// ==========================================
+// STARTER FUNCTIONS
+// ==========================================
+
+/**
+ * Google Apps Script Starter - Complete automation setup
+ * Run this function to set up all your automated workflows
+ */
+function StartAppScript() {
+    console.log('🚀 Starting Google Apps Script WebUntis Automation...');
+    
+    try {
+        // 1. Test basic API connection
+        console.log('1️⃣ Testing WebUntis API connection...');
+        testWebUntisAPI(UNTIS_CONFIG, false); // Don't logout, keep session
+        
+        // 2. Send homework email notification
+        console.log('2️⃣ Sending homework email notification...');
+        if (MAIL_NOTIFICATION_CONFIG.email && !MAIL_NOTIFICATION_CONFIG.email.includes('<YOUR_EMAIL')) {
+            sendHomeworkEmail(UNTIS_CONFIG, MAIL_NOTIFICATION_CONFIG.email, MAIL_NOTIFICATION_CONFIG.homeworkDaysAhead); // Use configured days
+            console.log('✅ Homework email sent successfully!');
+        } else {
+            console.log('⚠️ Email not configured - skipping email notification');
+        }
+        
+        // 3. Sync homework to calendar
+        console.log('3️⃣ Syncing homework to Google Calendar...');
+        syncHomeworkToCalendar(UNTIS_CONFIG, CALENDAR_CONFIG.calendarId, 7); // Next 7 days
+        console.log('✅ Homework synced to calendar successfully!');
+        
+        // 4. Send Home Assistant notification (if configured)
+        console.log('4️⃣ Sending Home Assistant notification...');
+        if (HA_CONFIG.url && !HA_CONFIG.url.includes('<YOUR_HOME_ASSISTANT')) {
+            try {
+                const api = getWebUntisApiInstance(UNTIS_CONFIG);
+                const homeworkList = api.getHomeworkList(2, true, true);
+                
+                if (homeworkList && homeworkList.length > 0) {
+                    const homeworkSummary = api.formatHomework(homeworkList, 2, true);
+                    const result = callHomeAssistantAPI(HA_CONFIG, HA_CONFIG.service, {
+                        message: `📚 WebUntis Homework Update:\n${homeworkSummary}`
+                    });
+                    
+                    if (result.success) {
+                        console.log('✅ Home Assistant notification sent successfully!');
+                    } else {
+                        console.log('⚠️ Home Assistant notification failed:', result.error);
+                    }
+                } else {
+                    console.log('😎 No homework found - Home Assistant notification not sent');
+                }
+            } catch (error) {
+                console.log('⚠️ Home Assistant notification error:', error.toString());
+            }
+        } else {
+            console.log('⚠️ Home Assistant not configured - skipping HA notification');
+        }
+        
+        // 5. Sync timetable to calendar
+        console.log('5️⃣ Syncing timetable to Google Calendar...');
+        try {
+            const api = getWebUntisApiInstance(UNTIS_CONFIG);
+            const today = new Date();
+            const endDate = new Date();
+            endDate.setDate(today.getDate() + 7);
+            
+            const timetableData = api.getTimetableData(today, endDate);
+            if (timetableData) {
+                const lessons = api.processTimetableData(timetableData, {
+                    skipCancelled: false,
+                    includeNotes: true
+                });
+                
+                if (lessons && lessons.length > 0) {
+                    const result = syncTimetableToCalendar(lessons, CALENDAR_CONFIG.calendarId);
+                    if (result.success) {
+                        console.log(`✅ Timetable sync successful! ${result.added} added, ${result.updated} updated`);
+                    } else {
+                        console.log('⚠️ Timetable sync failed:', result.error);
+                    }
+                } else {
+                    console.log('📅 No timetable lessons found for the next 7 days');
+                }
+            } else {
+                console.log('📅 No timetable data available');
+            }
+        } catch (error) {
+            console.log('⚠️ Timetable sync error:', error.toString());
+        }
+        
+        console.log('🎉 Google Apps Script automation completed successfully!');
+        console.log('💡 Tip: Set up time-driven triggers to run this automatically');
+        
+    } catch (error) {
+        console.error('❌ Google Apps Script automation failed:', error.toString());
+        clearWebUntisApiInstance();
     }
 }
