@@ -62,7 +62,8 @@ const MAIL_NOTIFICATION_CONFIG = {
     enabled: true,
     email: 'your-email@gmail.com',
     homeworkDaysAhead: 3,
-    emailConfig: null  // Not needed for Google Apps Script
+    titlePrefix: null,           // Optional prefix for email subject (e.g., "📚 School:", "Student Name:")
+    emailConfig: null            // Not needed for Google Apps Script
 };
 
 const CALENDAR_CONFIG = {

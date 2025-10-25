@@ -37,6 +37,7 @@ const MAIL_NOTIFICATION_CONFIG = {
     enabled: true,                                 // Set to false to disable email notifications
     email: '<YOUR_EMAIL@gmail.com>',               // Your email address for notifications
     homeworkDaysAhead: 3,                          // How many days ahead to check for homework in email notifications
+    titlePrefix: null,                             // Optional prefix for email subject (e.g., "📚 School:", "Student Name:")
     emailConfig: null                              // Not needed for Google Apps Script (uses built-in Gmail)
 };
 
@@ -60,15 +61,22 @@ function runDaily(){
     sendNotifications();
   
     //Step 2: Sync the homework
-    syncHomework();
-
-    //Step 3: Sync timetable
-    syncTimetable();
+    syncCalendar();
 }
 
 function sendNotifications() {
   console.log('🔔 Sending notifications...');
-  sendHomeworkEmail(UNTIS_CONFIG, MAIL_NOTIFICATION_CONFIG.email, MAIL_NOTIFICATION_CONFIG.homeworkDaysAhead);
+  sendHomeworkEmail(UNTIS_CONFIG, MAIL_NOTIFICATION_CONFIG.email, MAIL_NOTIFICATION_CONFIG.homeworkDaysAhead, MAIL_NOTIFICATION_CONFIG.titlePrefix);
+}
+
+function syncCalendar(){
+
+    //Step 2.1: Sync the homework
+    syncHomework();
+
+    //Step 2.2: Sync timetable
+    syncTimetable();
+
 }
 
 function syncHomework(){
@@ -98,7 +106,7 @@ function homeAssistantNotification() {
     try {
         // Get homework list for next 2 days
         const api = getWebUntisApiInstance(UNTIS_CONFIG);
-        const homeworkList = api.getHomeworkList(2, true, true); // Next 2 days, open only, exclude today
+        const homeworkList = api.getHomeworkList(2, true); // Next 2 days, open only
         
         // Only send notification if homework exists
         if (homeworkList) {

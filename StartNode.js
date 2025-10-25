@@ -38,11 +38,13 @@ const MAIL_NOTIFICATION_CONFIG = {
     enabled: true,                                 // Set to false to disable email notifications
     email: '<YOUR_EMAIL@gmail.com>',               // Your email address for notifications
     homeworkDaysAhead: 3,                          // How many days ahead to check for homework in email notifications
+    titlePrefix: null,                             // Optional prefix for email subject (e.g., "📚 School:", "Student Name:")
     emailConfig: {
         // For Node.js email sending (using nodemailer)
         service: 'gmail',                          // Email service (gmail, outlook, etc.)
         user: '<YOUR_SENDER_EMAIL@gmail.com>',     // Sender email
         password: '<YOUR_APP_PASSWORD>',           // App password (not regular password!)
+        from: '<YOUR_SENDER_EMAIL@gmail.com>',     // From address (usually same as user)
         // Alternative OAuth2 configuration:
         // clientId: '<YOUR_OAUTH_CLIENT_ID>',
         // clientSecret: '<YOUR_OAUTH_CLIENT_SECRET>',
@@ -101,7 +103,7 @@ async function StartNode() {
             MAIL_NOTIFICATION_CONFIG.email && !MAIL_NOTIFICATION_CONFIG.email.includes('<YOUR_EMAIL') && 
             MAIL_NOTIFICATION_CONFIG.emailConfig && !MAIL_NOTIFICATION_CONFIG.emailConfig.user.includes('<YOUR_SENDER_EMAIL')) {
             try {
-                await sendHomeworkEmailNodejs(UNTIS_CONFIG, MAIL_NOTIFICATION_CONFIG.email, MAIL_NOTIFICATION_CONFIG.homeworkDaysAhead, MAIL_NOTIFICATION_CONFIG.emailConfig);
+                await sendHomeworkEmailNodejs(UNTIS_CONFIG, MAIL_NOTIFICATION_CONFIG.email, MAIL_NOTIFICATION_CONFIG.homeworkDaysAhead, MAIL_NOTIFICATION_CONFIG.titlePrefix, MAIL_NOTIFICATION_CONFIG.emailConfig);
                 console.log('✅ Homework email sent successfully!');
             } catch (error) {
                 console.log('⚠️ Email sending failed:', error.message);

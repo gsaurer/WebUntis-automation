@@ -236,17 +236,13 @@ class WebUntisAPI {
      * Get homework for the next N days
      * @param {number} days - Number of days to look ahead (default: 7)
      * @param {boolean} onlyIncomplete - Only show incomplete homework (default: true)
-     * @param {boolean} excludeToday - Exclude today from the results (default: false)
      * @returns {Promise<Array|null>} Array of homework objects or null if no homework found
      */
-    async getHomeworkList(days = 7, onlyIncomplete = true, excludeToday = false) {
+    async getHomeworkList(days = 7, onlyIncomplete = true) {
         const now = new Date();
         
-        // If excludeToday is true, start from tomorrow
-        const startDate = excludeToday 
-            ? new Date(now.getTime() + (24 * 60 * 60 * 1000))  // Tomorrow
-            : now;                                               // Today
-            
+        // Always start from today
+        const startDate = now;
         const future = new Date(startDate.getTime() + (days * 24 * 60 * 60 * 1000));
         
         const startDateStr = WebUntisAPI.formatDate(startDate);
@@ -325,11 +321,10 @@ class WebUntisAPI {
      * Get formatted homework for the next N days (legacy method for backward compatibility)
      * @param {number} days - Number of days to look ahead (default: 7)
      * @param {boolean} onlyIncomplete - Only show incomplete homework (default: true)
-     * @param {boolean} excludeToday - Exclude today from the results (default: false)
      * @returns {Promise<string>} Formatted string with Subject, Due, Text
      */
-    async getFormattedHomework(days = 7, onlyIncomplete = true, excludeToday = false) {
-        const homeworkList = await this.getHomeworkList(days, onlyIncomplete, excludeToday);
+    async getFormattedHomework(days = 7, onlyIncomplete = true) {
+        const homeworkList = await this.getHomeworkList(days, onlyIncomplete);
         return this.formatHomework(homeworkList, days, onlyIncomplete);
     }
 

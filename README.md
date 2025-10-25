@@ -80,7 +80,7 @@ const MY_CONFIG = {
 ### Basic Homework Retrieval
 ```javascript
 const api = getWebUntisApiInstance(MY_CONFIG);
-const homework = await api.getHomeworkList(7, true, true); // Next 7 days, open only, exclude today
+const homework = await api.getHomeworkList(7, true); // Next 7 days, open only
 console.log(homework);
 ```
 

@@ -43,7 +43,7 @@ async function sendHomeworkEmail(config, emailAddress, days = 3, emailPrefix = n
     try {
         // Get API instance using the global function from WebUntis.js
         const api = await getWebUntisApiInstance(config);
-        const homeworkList = await api.getHomeworkList(days, true, true); // Next n days, open only, exclude today
+        const homeworkList = await api.getHomeworkList(days, true); // Next n days, open only
         
         // Only send email if homework exists
         if (homeworkList) {
@@ -108,7 +108,7 @@ async function sendHomeworkEmailNodejs(config, emailAddress, days = 3, emailPref
 
     try {
         const api = await getWebUntisApiInstance(config);
-        const homeworkList = await api.getHomeworkList(days, true, true);
+        const homeworkList = await api.getHomeworkList(days, true);
         
         if (homeworkList) {
             const homework = api.formatHomework(homeworkList, days, true);

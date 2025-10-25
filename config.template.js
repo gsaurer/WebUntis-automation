@@ -57,11 +57,13 @@ const MAIL_NOTIFICATION_CONFIG = {
     enabled: true,                                 // Set to false to disable email notifications
     email: 'your-email@gmail.com',                // Your email address for notifications
     homeworkDaysAhead: 3,                          // How many days ahead to check for homework in email notifications
+    titlePrefix: null,                             // Optional prefix for email subject (e.g., "📚 School:", "Student Name:")
     emailConfig: {
         // For Node.js email sending (using nodemailer)
         service: 'gmail',                          // Email service provider
         user: 'sender-email@gmail.com',            // Sender email address
         password: 'YOUR_APP_PASSWORD',             // Gmail app password (not regular password!)
+        from: 'sender-email@gmail.com',            // From address (usually same as user)
         // Alternative OAuth2 setup:
         // clientId: 'YOUR_OAUTH_CLIENT_ID',
         // clientSecret: 'YOUR_OAUTH_CLIENT_SECRET',
