@@ -45,9 +45,18 @@ async function sendHomeworkEmail(config, emailAddress, days = 3, emailPrefix = n
         const api = await getWebUntisApiInstance(config);
         const homeworkList = await api.getHomeworkList(days, true); // Next n days, open only
         
-        // Only send email if homework exists
+        // Filter out homework due today
+        let filteredHomeworkList = null;
         if (homeworkList) {
-            const homework = api.formatHomework(homeworkList, days, true);
+            const today = new Date();
+            const todayStr = parseInt(WebUntisAPI.formatDate(today)); // Convert to YYYYMMDD format
+            
+            filteredHomeworkList = homeworkList.filter(hw => hw.dueDate !== todayStr);
+        }
+        
+        // Only send email if homework exists after filtering
+        if (filteredHomeworkList && filteredHomeworkList.length > 0) {
+            const homework = api.formatHomework(filteredHomeworkList, days, true);
             
             // Convert plain text to HTML for better emoji support
             const htmlContent = convertToHtmlEmail(homework);
@@ -70,9 +79,9 @@ async function sendHomeworkEmail(config, emailAddress, days = 3, emailPrefix = n
                 }
             );
             console.log(`📧 Homework email sent successfully to ${emailAddress}!`);
-            console.log(`📚 Found ${homeworkList.length} homework assignments`);
+            console.log(`📚 Found ${filteredHomeworkList.length} homework assignments (filtered out today's homework)`);
         } else {
-            console.log(`😎 No homework found for the next ${days} days - email not sent`);
+            console.log(`😎 No homework found for the next ${days} days (excluding today) - email not sent`);
         }
         
         // Note: We don't logout here as we're reusing the session
@@ -110,8 +119,17 @@ async function sendHomeworkEmailNodejs(config, emailAddress, days = 3, emailPref
         const api = await getWebUntisApiInstance(config);
         const homeworkList = await api.getHomeworkList(days, true);
         
+        // Filter out homework due today
+        let filteredHomeworkList = null;
         if (homeworkList) {
-            const homework = api.formatHomework(homeworkList, days, true);
+            const today = new Date();
+            const todayStr = parseInt(WebUntisAPI.formatDate(today)); // Convert to YYYYMMDD format
+            
+            filteredHomeworkList = homeworkList.filter(hw => hw.dueDate !== todayStr);
+        }
+        
+        if (filteredHomeworkList && filteredHomeworkList.length > 0) {
+            const homework = api.formatHomework(filteredHomeworkList, days, true);
             const htmlContent = convertToHtmlEmail(homework);
             
             let emailTitle = 'Upcoming Homework Reminder';
@@ -132,9 +150,9 @@ async function sendHomeworkEmailNodejs(config, emailAddress, days = 3, emailPref
             });
             
             console.log(`📧 Homework email sent successfully to ${emailAddress}!`);
-            console.log(`📚 Found ${homeworkList.length} homework assignments`);
+            console.log(`📚 Found ${filteredHomeworkList.length} homework assignments (filtered out today's homework)`);
         } else {
-            console.log(`😎 No homework found for the next ${days} days - email not sent`);
+            console.log(`😎 No homework found for the next ${days} days (excluding today) - email not sent`);
         }
         
     } catch (error) {
