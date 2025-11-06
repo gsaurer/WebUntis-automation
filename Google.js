@@ -51,7 +51,8 @@ async function sendHomeworkEmail(config, emailAddress, days = 3, emailPrefix = n
             const today = new Date();
             const todayStr = parseInt(WebUntisAPI.formatDate(today)); // Convert to YYYYMMDD format
             
-            filteredHomeworkList = homeworkList.filter(hw => hw.dueDate !== todayStr);
+            filteredHomeworkList = homeworkList.filter(hw => 
+                hw.dueDate !== todayStr);
         }
         
         // Only send email if homework exists after filtering
